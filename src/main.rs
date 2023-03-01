@@ -6,7 +6,7 @@
 
 use clap::Parser;               // CLI parameter parsing    
 use paho_mqtt as mqtt;          // Connecting MQTT
-use anyhow::{Result};           // Return results
+use anyhow::{anyhow,Result};           // Return results
 
 // Note: clap uses the comments in the struct to generate the cli-help
 #[derive(Parser)]
@@ -31,22 +31,32 @@ fn main() -> Result<()> {
     let args = Cli::parse();
     let host = args.address;
 
-    println!("Connecting to Server: {}", host);
+    // Create Client
+    let cli = mqtt::AsyncClient::new(host)?;
 
-    let cli = mqtt::AsyncClient::new(host)?;        // Create Client
-    let conn_opts = mqtt::ConnectOptions::new();        // Create Connection Options
-    cli.connect(conn_opts).wait()?;                             // Connect to MQTT server
+    // Create Connection Options
+    let conn_opts = mqtt::ConnectOptions::new();
+    
+    // Connect to MQTT server
+    match cli.connect(conn_opts).wait() {
+        Ok(_) => println!("Connected to Server"),
+        Err(e) => return Err(anyhow!("Could not connect to server, error: {}", e)),
+    };
 
-    let topic = mqtt::Topic::new(&cli, args.topic.clone(),  args.qos.clone()); // Create a topic
+    // Create a topic
+    let topic = mqtt::Topic::new(&cli, args.topic.clone(),  args.qos.clone());
     let message = args.msg;
 
-    println!("Publishing message '{}' on the '{}' topic with QOS={}", message, args.topic, args.qos);
+    // Publish
+    let tok = topic.publish(message.clone());
+    match tok.wait() {
+        Ok(_) => println!("Published message '{}' on the '{}' topic with QOS={}", message, args.topic, args.qos),
+        Err(e) => return Err(anyhow!("Error publishing message: {}", e)),
+    };
 
-    let tok = topic.publish(message.clone());   // Publish
-    tok.wait()?;    // Wait...
-
-    let tok = cli.disconnect(None); // Disconnect
-    tok.wait()?;    // Wait...
+    // Disconnect
+    let tok = cli.disconnect(None);
+    tok.wait()?;
 
     Ok(())
 }
